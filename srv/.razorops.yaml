@@ -1,0 +1,77 @@
+# version: v2
+    
+# tasks:    
+#   build-image:
+#     steps:
+#     - checkout
+#     - run: |
+#         helm lint helm/core
+#     - docker/build:
+#         image: cloud4students/ms-core-dev
+#         tags: ["latest", "${CI_COMMIT_SHA:0:8}", "${CI_REPO_BRANCH}"]
+#         push: true
+#       if: branch == "master" 
+#     - docker/build:
+#         image: cloud4students/ms-core-dev
+#         tags: ["latest", "${CI_COMMIT_SHA:0:8}", "${CI_REPO_BRANCH}"]
+#         push: true
+#       if: branch == "dev"
+#     - docker/build:
+#         image: cloud4students/ms-core-qa
+#         tags: ["latest", "${CI_COMMIT_SHA:0:8}", "${CI_REPO_BRANCH}"]
+#         push: true
+#       if: branch == "qa"
+#     - docker/build:
+#         image: cloud4students/ms-core-dev
+#         tags: ["latest", "${CI_COMMIT_SHA:0:8}", "${CI_REPO_BRANCH}"]
+#         push: true
+#       if: branch == "helm" 
+#     - workspace/persist:
+#         paths: [helm]
+
+#   deploy:
+#     depends: [build-image]
+#     variables:
+#     - APP_NAME=core
+#     - DOCKER_TAG=${CI_COMMIT_SHA:0:8}
+#     - HELM_CHART=helm/core
+#     - VALUES_FILE=values-dev.yaml
+#     - NS=dev
+#     steps:
+#     - workspace/attach
+#     - commands:
+#       - |
+#         if [[ $CI_REPO_BRANCH == "master" ]]; then
+#                   NS=dev
+#                   APP_NAME=core
+#                   VALUES_FILE=values-dev.yaml
+
+#           elif [[ $CI_REPO_BRANCH == "dev" ]]; then
+#                   APP_NAME=core
+#                   VALUES_FILE=values-dev.yaml
+
+#           elif [[ $CI_REPO_BRANCH == "helm" ]]; then
+#                   NS=dev
+#                   APP_NAME=core
+#                   VALUES_FILE=values-dev.yaml
+
+#           elif [[ $CI_REPO_BRANCH == "qa" ]]; then
+#                   NS=qa
+#                   APP_NAME=core-qa
+#                   VALUES_FILE=values-qa.yaml
+          
+#           elif [[ $CI_REPO_BRANCH == "demo" ]]; then
+#                   NS=demo
+#                   APP_NAME=core-demo
+#                   VALUES_FILE=values-demo.yaml
+
+#           else
+#               echo "Unsupported release branch: $CI_REPO_BRANCH "
+#               exit 1
+#         fi
+#       - |
+#         helm dep up $HELM_CHART
+#         helm upgrade --install --reuse-values $APP_NAME $HELM_CHART \
+#           -f $HELM_CHART/$VALUES_FILE \
+#           --set image.tag=$DOCKER_TAG \
+#           --create-namespace -n $NS

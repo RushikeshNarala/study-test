@@ -1,0 +1,41 @@
+{
+  "initial_min_instance_count": 2,
+  "instance_min_count": 2,
+  "instance_max_count": 3,
+  "scaling_rules": [
+    {
+      "metric_type": "cpu",
+      "threshold": 70,
+      "stat_window_secs": 60,
+      "breach_duration_secs": 60,
+      "operator": ">",
+      "adjustment": "+1"
+    },
+    {
+      "metric_type": "cpu",
+      "threshold": 30,
+      "stat_window_secs": 60,
+      "breach_duration_secs": 120,
+      "cool_down_secs": 120,
+      "operator": "<=",
+      "adjustment": "-1"
+    },
+    {
+      "metric_type": "memoryused",
+      "breach_duration_secs": 60,
+      "threshold": 90,
+      "operator": ">=",
+      "cool_down_secs": 60,
+      "adjustment": "+1"
+      },
+      {
+      "metric_type": "memoryused", 
+      "breach_duration_secs": 300,
+      "threshold": 50, 
+      "operator": "<", 
+      "cool_down_secs": 300, 
+      "adjustment": "-1" 
+      }
+       
+  ]
+}
