@@ -1,0 +1,75 @@
+name: Send MTAR file via SendGrid
+ 
+on:
+  workflow_dispatch:  # Manual trigger from the Actions tab
+  push:
+    branches:
+       - main
+jobs:
+  send-mtar:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      # Step 1: Checkout your code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+ 
+      # Step 2: Install Cloud Foundry CLI (v8)
+      - name: Install Cloud Foundry CLI
+        run: |
+          curl -sL "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
+          sudo mv cf8 /usr/local/bin/
+          cf8 --version
+ 
+      # Step 3: Install MBT (Multi-Target Application build tool)
+      - name: Install MBT
+        run: npm install -g mbt
+ 
+      # Step 4: Install the MTA Plugin for Cloud Foundry
+      - name: Install MTA Plugin
+        run: |
+          cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
+ 
+      # Step 5: Build the MTA archive
+      - name: Build MTA Archive
+        run: mbt build -t gen --mtar mta.tar
+ 
+      # Step 9: Send .mtar file via SendGrid
+      - name: Send .mtar file using SendGrid API
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TO_EMAIL: rushikesh@si6.io
+          FROM_EMAIL: noreply@si6.io
+        run: |
+          base64 app.mtar > encoded.txt
+          ENCODED_CONTENT=$(cat encoded.txt)
+ 
+          cat <<EOF > payload.json
+          {
+            "personalizations": [
+              {
+                "to": [{ "email": "${TO_EMAIL}" }],
+                "subject": "Automated MTAR File from GitHub Actions"
+              }
+            ],
+            "from": { "email": "${FROM_EMAIL}" },
+            "content": [
+              {
+                "type": "text/plain",
+                "value": "Hello,\n\nPlease find attached the generated MTAR file.\n\nRegards,\nGitHub Actions"
+              }
+            ],
+            "attachments": [
+              {
+                "content": "${ENCODED_CONTENT}",
+                "type": "application/octet-stream",
+                "filename": "app.mtar"
+              }
+            ]
+          }
+          EOF
+ 
+          curl -X POST "https://api.sendgrid.com/v3/mail/send" \
+            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d @payload.json
