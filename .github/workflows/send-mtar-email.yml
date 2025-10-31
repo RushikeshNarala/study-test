@@ -39,7 +39,7 @@ jobs:
       - name: Send .mtar file using SendGrid API
         env:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          TO_EMAIL: rushikesh@si6.io    # Replace or use secret
+          TO_EMAIL: Rushikesh@si6.io    # Replace or use secret
           FROM_EMAIL: noreply@si6.io      # Replace or use secret
         run: |
           base64 gen/mta.tar > encoded.txt
