@@ -35,6 +35,13 @@ jobs:
       - name: Build MTA Archive
         run: mbt build -t gen --mtar mta.tar
 
+              # Debug: Check size and location of generated .mtar file
+      - name: Check generated MTAR file
+        run: |
+          echo "Listing contents of gen directory..."
+          ls -lh gen/
+
+
       # Step 6: Send .mtar file via SendGrid API
       - name: Send .mtar file using SendGrid API
         env:
