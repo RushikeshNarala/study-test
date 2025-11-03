@@ -13,7 +13,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
- 
+
+  # - name: Load Environment Variables
+  #       working-directory: srv
+  #       run: |
+  #         echo "${{ secrets.ENV_EUTEST }}" > .env
+  
       # Step 1: Setup Node.js (for npm and mbt)
       - name: Setup Node.js
         uses: actions/setup-node@v4
