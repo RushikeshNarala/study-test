@@ -37,12 +37,11 @@ jobs:
       - name: Install MBT
         run: npm install -g mbt
  
-      # Step 4: Install the MTA Plugin for Cloud Foundry
+# Step 4: Install the MTA Plugin for Cloud Foundry
       - name: Install MTA Plugin
         run: |
-          # Use 'cf' as per the previous step's renaming
-          cf install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64 -r CF-CLI
- 
+          # Removed '-r CF-CLI' as we are installing directly from a URL
+          cf install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
       # Step 5: Build the MTA archive (.mtar file)
       - name: Build MTA Archive
         run: mbt build -t gen --mtar mta_project.mtar # Renamed output for clarity
