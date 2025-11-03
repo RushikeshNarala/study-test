@@ -1,4 +1,4 @@
-name: Upload TAR file to OneDrive
+name: Send TAR file via SendGrid
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -15,33 +15,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # # Step 2: Load Environment Variables
-      # - name: Load Environment Variables
-      #   working-directory: srv
-      #   run: |
-      #     echo "${{ secrets.ENV_EUTEST }}" > .env
-
-      # Step 3: Install Cloud Foundry CLI (v8)
+      # Step 2: Install Cloud Foundry CLI (v8)
       - name: Install Cloud Foundry CLI
         run: |
           curl -sL "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
           sudo mv cf8 /usr/local/bin/
           cf8 --version
 
-      # Step 4: Install MBT (Multi-Target Application Build Tool)
+      # Step 3: Install MBT (Multi-Target Application Build Tool)
       - name: Install MBT
         run: npm install -g mbt
 
-      # Step 5: Install MTA Plugin for Cloud Foundry
+      # Step 4: Install MTA Plugin for Cloud Foundry
       - name: Install MTA Plugin
         run: |
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
-      # Step 6: Build MTA Archive (creates mta.tar)
+      # Step 5: Build MTA Archive (creates mta.tar)
       - name: Build MTA Archive
         run: mbt build -t gen --mtar mta.tar
 
-      # Step 7: Create TAR file from project source
+      # Step 6: Create TAR file from project source
       - name: Create TAR Archive from Source Code
         run: |
           mkdir -p gen
@@ -49,41 +43,51 @@ jobs:
           echo "Generated TAR file:"
           ls -lh gen/
 
-      # Step 8: Get Microsoft Graph API Access Token
-      - name: Get Access Token from Microsoft Graph
-        id: get_token
-        run: |
-          response=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
-            -d "client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -d "scope=https://graph.microsoft.com/.default" \
-            -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-            -d "grant_type=client_credentials" \
-            "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token")
-
-          echo "response=$response"
-          echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
-
-      # Step 9: Upload TAR file to OneDrive
-      - name: Upload TAR File to OneDrive
+      # Step 7: Send TAR file via SendGrid Email
+      - name: Send TAR File via SendGrid
         env:
-          TOKEN: ${{ steps.get_token.outputs.token }}
-          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TO_EMAIL: rushikeshnarala02@gmail.com
+          FROM_EMAIL: noreply@si6.io
         run: |
-          echo "Uploading project_backup.tar to OneDrive..."
-          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/project_backup.tar:/content" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/x-tar" \
-            --data-binary @gen/project_backup.tar
+          echo "Encoding TAR file and sending email via SendGrid..."
 
-      # Step 10: Generate Shareable OneDrive Link
-      - name: Generate Shareable Link
-        env:
-          TOKEN: ${{ steps.get_token.outputs.token }}
-          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
-        run: |
-          echo "Creating shareable link..."
-          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/project_backup.tar:/createLink" \
-            -H "Authorization: Bearer $TOKEN" \
+          # Encode TAR file as base64 (SendGrid requires this format)
+          base64 gen/project_backup.tar > encoded.txt
+          ENCODED_CONTENT=$(cat encoded.txt)
+
+          # Create JSON payload for SendGrid API
+          cat <<EOF > payload.json
+          {
+            "personalizations": [
+              {
+                "to": [{ "email": "${TO_EMAIL}" }],
+                "subject": "GitHub Actions: Project TAR File"
+              }
+            ],
+            "from": { "email": "${FROM_EMAIL}" },
+            "content": [
+              {
+                "type": "text/plain",
+                "value": "Hello,\n\nPlease find attached the generated TAR file from the latest workflow run.\n\nRegards,\nGitHub Actions"
+              }
+            ],
+            "attachments": [
+              {
+                "content": "${ENCODED_CONTENT}",
+                "type": "application/x-tar",
+                "filename": "project_backup.tar"
+              }
+            ]
+          }
+          EOF
+
+          # Send email using SendGrid API
+          response=$(curl -s -o response.txt -w "%{http_code}" -X POST "https://api.sendgrid.com/v3/mail/send" \
+            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{"type": "view", "scope": "anonymous"}' \
-            | jq -r '.link.webUrl'
+            -d @payload.json)
+
+          echo "HTTP Response Code: $response"
+          echo "SendGrid Response:"
+          cat response.txt
