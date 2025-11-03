@@ -1,75 +1,74 @@
-name: Send MTAR file via SendGrid
+name: Send MTA TAR file via SendGrid
 
 on:
-  workflow_dispatch:  # Manual trigger from the Actions tab
+  workflow_dispatch:  # manual trigger
   push:
-   branches:
-      - main
-     
+     branches:
+        - main
 jobs:
-  send-mtar:
+  send-tar:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout your code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Install Cloud Foundry CLI (v8)
-      - name: Install Cloud Foundry CLI
+      - name: Generate .tar file from source code
         run: |
-          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
-          sudo mv cf8 /usr/local/bin/
-          cf8 --version
+          # Create a directory to hold the files for the tar archive
+          mkdir mta_source_archive
 
-      # Step 3: Install MBT (Multi-Target Application Build Tool)
-      - name: Install MBT
-        run: npm install -g mbt
+          # Copy your mta.yaml to the archive directory
+          cp mta.yaml mta_source_archive/
 
-      # Step 4: Install the MTA Plugin for Cloud Foundry
-      - name: Install MTA Plugin
-        run: |
-          cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
+          # If you have other specific files or directories you want to include:
+          # cp -r my_module_folder mta_source_archive/
+          # cp another_file.js mta_source_archive/
 
-      # Step 5: Build the MTA Archive (this will generate gen/mta.tar)
-      - name: Build MTA Archive
-        run: mbt build -t gen --mtar mta.tar
+          # Alternatively, to include ALL files/folders from the repository root
+          # excluding the .git directory itself, you could do:
+          # rsync -av --exclude='.git' . mta_source_archive/
 
-      # Step 6: Send .mtar file via SendGrid API
-      - name: Send .mtar file using SendGrid API
+          # Create the tar file from the mta_source_archive directory
+          tar -cvf mta_project.tar mta_source_archive/
+
+      - name: Send .tar file via SendGrid API
         env:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          TO_EMAIL: rushikeshnarala02@gmail.com    # Replace or use secret
-          FROM_EMAIL: noreply@si6.io      # Replace or use secret
+          TO_EMAIL: rushikeshnarala02@gmail.com # Replace with your recipient email
+          FROM_EMAIL: noreply@si6.io # Replace with your sender email
         run: |
-          base64 gen/mta.tar > encoded.txt
+          # Encode TAR file as base64
+          base64 mta_project.tar > encoded.txt
           ENCODED_CONTENT=$(cat encoded.txt)
 
+          # Create JSON payload
           cat <<EOF > payload.json
           {
             "personalizations": [
               {
                 "to": [{ "email": "${TO_EMAIL}" }],
-                "subject": "Automated MTAR File from GitHub Actions"
+                "subject": "MTA Project Archive from GitHub Actions"
               }
             ],
             "from": { "email": "${FROM_EMAIL}" },
             "content": [
               {
                 "type": "text/plain",
-                "value": "Hello,\n\nPlease find attached the generated MTAR file.\n\nRegards,\nGitHub Actions"
+                "value": "Hello,\n\nPlease find attached the generated MTA project TAR file.\n\nRegards,\nGitHub Actions"
               }
             ],
             "attachments": [
               {
                 "content": "${ENCODED_CONTENT}",
-                "type": "application/octet-stream",
-                "filename": "mta.tar"
+                "type": "application/x-tar",
+                "filename": "mta_project.tar"
               }
             ]
           }
           EOF
 
+          # Send email using SendGrid API
           curl -X POST "https://api.sendgrid.com/v3/mail/send" \
             -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
             -H "Content-Type: application/json" \
