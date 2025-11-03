@@ -15,11 +15,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Step 2: Load Environment Variables
-      - name: Load Environment Variables
-        working-directory: srv
-        run: |
-          echo "${{ secrets.ENV_EUTEST }}" > .env
+      # # Step 2: Load Environment Variables
+      # - name: Load Environment Variables
+      #   working-directory: srv
+      #   run: |
+      #     echo "${{ secrets.ENV_EUTEST }}" > .env
 
       # Step 3: Install Cloud Foundry CLI (v8)
       - name: Install Cloud Foundry CLI
@@ -73,7 +73,7 @@ jobs:
           curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/project_backup.tar:/content" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/x-tar" \
-            --data-binary @gen/project_backup.tar
+            --data-binary @gen/mta.tar
 
       # Step 10: Generate Shareable OneDrive Link
       - name: Generate Shareable Link
