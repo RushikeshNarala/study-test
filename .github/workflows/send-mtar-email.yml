@@ -1,33 +1,50 @@
-name: Upload MTAR file to OneDrive
+name: Upload TAR file to OneDrive
 
 on:
-  workflow_dispatch: # manual trigger
+  workflow_dispatch:  # manual trigger
   push:
     branches:
-      - main  # optional - only runs on main pushes
+      - main
 
 jobs:
-  upload-mtar:
+  upload-tar-archive:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout your source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Install SAP Multi-Target Application Builder (MBT)
-      - name: Install MBT
-        run: |
-          npm install -g mbt
+      # Step 1: Setup Node.js (optional, for npm/mbt compatibility)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-      # Step 3: Build the MTAR from mta.yaml
-      - name: Build MTAR file
+      # Step 2: Install Cloud Foundry CLI (v8)
+      - name: Install Cloud Foundry CLI (cf8)
         run: |
-          mbt build -t gen --mtar mta.tar
-          echo "MTAR file generated:"
+          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel%22 | tar -zx
+          sudo mv cf8 /usr/local/bin/cf
+          cf --version
+
+      # Step 3: Install MBT (Multi-Target Application build tool)
+      - name: Install MBT
+        run: npm install -g mbt
+
+      # Step 4: Install the MTA Plugin for Cloud Foundry
+      - name: Install MTA Plugin
+        run: |
+          cf install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64 -r CF-CLI
+
+      # Step 5: Create TAR file from source code
+      - name: Create TAR archive from source code
+        run: |
+          mkdir -p gen
+          tar -cvf gen/project_backup.tar ./
+          echo "Generated TAR file:"
           ls -lh gen/
 
-      # Step 4: Get Microsoft Graph API access token
+      # Step 6: Get Microsoft Graph API access token
       - name: Get access token from Microsoft Graph
         id: get_token
         run: |
@@ -41,28 +58,27 @@ jobs:
           echo "response=$response"
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 5: Upload MTAR file to OneDrive
-      - name: Upload MTAR file to OneDrive
+      # Step 7: Upload TAR file to OneDrive
+      - name: Upload TAR file to OneDrive
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
         run: |
-          echo "Uploading mta.tar to OneDrive..."
-          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/content" \
+          echo "Uploading project_backup.tar to OneDrive..."
+          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/project_backup.tar:/content" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/x-tar" \
-            --data-binary @gen/mta.tar
+            --data-binary @gen/project_backup.tar
 
-      # Step 6: Generate shareable OneDrive link
+      # Step 8: Generate shareable OneDrive link
       - name: Generate shareable link
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
         run: |
           echo "Creating shareable link..."
-          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/createLink" \
+          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/project_backup.tar:/createLink" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d '{"type": "view", "scope": "anonymous"}' \
             | jq -r '.link.webUrl'
-
