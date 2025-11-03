@@ -30,7 +30,7 @@ jobs:
           # rsync -av --exclude='.git' . mta_source_archive/
 
           # Create the tar file from the mta_source_archive directory
-          tar -cvf mta_project.tar mta_source_archive/
+          tar -cvf mta.tar mta_source_archive/
 
       - name: Send .tar file via SendGrid API
         env:
