@@ -1,89 +1,68 @@
-name: Send Built MTA Archive via SendGrid
- 
+name: Upload MTAR file to OneDrive
+
 on:
-  workflow_dispatch:  # manual trigger
+  workflow_dispatch: # manual trigger
   push:
     branches:
-      - main
- 
+      - main  # optional - only runs on main pushes
+
 jobs:
-  send-mta-archive:
+  upload-mtar:
     runs-on: ubuntu-latest
- 
+
     steps:
+      # Step 1: Checkout your source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-  # - name: Load Environment Variables
-  #       working-directory: srv
-  #       run: |
-  #         echo "${{ secrets.ENV_EUTEST }}" > .env
-  
-      # Step 1: Setup Node.js (for npm and mbt)
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18' # Or any version compatible with your project/mbt
- 
-     # Step 2: Install Cloud Foundry CLI (v8)
-      - name: Install Cloud Foundry CLI (cf8)
-        run: |
-          # Corrected URL: removed the extra %22 at the end
-          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
-          sudo mv cf8 /usr/local/bin/cf # Moving to 'cf' for easier command usage
-          cf --version # Verify installation
- 
-      # Step 3: Install MBT (Multi-Target Application build tool)
+      # Step 2: Install SAP Multi-Target Application Builder (MBT)
       - name: Install MBT
-        run: npm install -g mbt
- 
-# Step 4: Install the MTA Plugin for Cloud Foundry
-      - name: Install MTA Plugin
         run: |
-          # Removed '-r CF-CLI' as we are installing directly from a URL
-          cf install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
-      # Step 5: Build the MTA archive (.mtar file)
-      - name: Build MTA Archive
-        run: mbt build -t gen --mtar mta_project.mtar # Renamed output for clarity
- 
-      - name: Send MTA Archive via SendGrid API
+          npm install -g mbt
+
+      # Step 3: Build the MTAR from mta.yaml
+      - name: Build MTAR file
+        run: |
+          mbt build -t gen --mtar mta.tar
+          echo "MTAR file generated:"
+          ls -lh gen/
+
+      # Step 4: Get Microsoft Graph API access token
+      - name: Get access token from Microsoft Graph
+        id: get_token
+        run: |
+          response=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -d "scope=https://graph.microsoft.com/.default" \
+            -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+            -d "grant_type=client_credentials" \
+            "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token")
+
+          echo "response=$response"
+          echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
+
+      # Step 5: Upload MTAR file to OneDrive
+      - name: Upload MTAR file to OneDrive
         env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          TO_EMAIL: rushikeshnarala02@gmail.com
-          FROM_EMAIL: noreply@si6.io
+          TOKEN: ${{ steps.get_token.outputs.token }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
         run: |
-          # Encode MTAR file as base64
-          base64 mta_project.mtar > encoded.txt
-          ENCODED_CONTENT=$(cat encoded.txt)
- 
-          # Create JSON payload
-          cat <<EOF > payload.json
-          {
-            "personalizations": [
-              {
-                "to": [{ "email": "${TO_EMAIL}" }],
-                "subject": "Built MTA Archive from GitHub Actions"
-              }
-            ],
-            "from": { "email": "${FROM_EMAIL}" },
-            "content": [
-              {
-                "type": "text/plain",
-                "value": "Hello,\n\nPlease find attached the built MTA archive.\n\nRegards,\nGitHub Actions"
-              }
-            ],
-            "attachments": [
-              {
-                "content": "${ENCODED_CONTENT}",
-                "type": "application/x-tar", # MTAR files are essentially tar files
-                "filename": "mta_project.mtar"
-              }
-            ]
-          }
-          EOF
- 
-          # Send email using SendGrid API
-          curl -X POST "https://api.sendgrid.com/v3/mail/send" \
-            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+          echo "Uploading mta.tar to OneDrive..."
+          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/content" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/x-tar" \
+            --data-binary @gen/mta.tar
+
+      # Step 6: Generate shareable OneDrive link
+      - name: Generate shareable link
+        env:
+          TOKEN: ${{ steps.get_token.outputs.token }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+        run: |
+          echo "Creating shareable link..."
+          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/createLink" \
+            -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
-            -d @payload.json
+            -d '{"type": "view", "scope": "anonymous"}' \
+            | jq -r '.link.webUrl'
+
