@@ -25,10 +25,11 @@ jobs:
         with:
           node-version: '18' # Or any version compatible with your project/mbt
  
-      # Step 2: Install Cloud Foundry CLI (v8)
+     # Step 2: Install Cloud Foundry CLI (v8)
       - name: Install Cloud Foundry CLI (cf8)
         run: |
-          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel%22 | tar -zx
+          # Corrected URL: removed the extra %22 at the end
+          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
           sudo mv cf8 /usr/local/bin/cf # Moving to 'cf' for easier command usage
           cf --version # Verify installation
  
