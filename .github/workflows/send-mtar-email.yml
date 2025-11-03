@@ -1,73 +1,82 @@
-name: Send MTA TAR file via SendGrid
-
+name: Send Built MTA Archive via SendGrid
+ 
 on:
   workflow_dispatch:  # manual trigger
   push:
-     branches:
-        - main
+    branches:
+      - main
+ 
 jobs:
-  send-tar:
+  send-mta-archive:
     runs-on: ubuntu-latest
-
+ 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Generate .tar file from source code
+ 
+      # Step 1: Setup Node.js (for npm and mbt)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Or any version compatible with your project/mbt
+ 
+      # Step 2: Install Cloud Foundry CLI (v8)
+      - name: Install Cloud Foundry CLI (cf8)
         run: |
-          # Create a directory to hold the files for the tar archive
-          mkdir mta_source_archive
-
-          # Copy your mta.yaml to the archive directory
-          cp mta.yaml mta_source_archive/
-
-          # If you have other specific files or directories you want to include:
-          # cp -r my_module_folder mta_source_archive/
-          # cp another_file.js mta_source_archive/
-
-          # Alternatively, to include ALL files/folders from the repository root
-          # excluding the .git directory itself, you could do:
-          # rsync -av --exclude='.git' . mta_source_archive/
-
-          # Create the tar file from the mta_source_archive directory
-          tar -cvf mta.tar mta_source_archive/
-
-      - name: Send .tar file via SendGrid API
+          curl -L "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel%22 | tar -zx
+          sudo mv cf8 /usr/local/bin/cf # Moving to 'cf' for easier command usage
+          cf --version # Verify installation
+ 
+      # Step 3: Install MBT (Multi-Target Application build tool)
+      - name: Install MBT
+        run: npm install -g mbt
+ 
+      # Step 4: Install the MTA Plugin for Cloud Foundry
+      - name: Install MTA Plugin
+        run: |
+          # Use 'cf' as per the previous step's renaming
+          cf install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64 -r CF-CLI
+ 
+      # Step 5: Build the MTA archive (.mtar file)
+      - name: Build MTA Archive
+        run: mbt build -t gen --mtar mta_project.mtar # Renamed output for clarity
+ 
+      - name: Send MTA Archive via SendGrid API
         env:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          TO_EMAIL: sandip@si6.io # Replace with your recipient email
-          FROM_EMAIL: noreply@si6.io # Replace with your sender email
+          TO_EMAIL: rushikeshnarala02@gmail.com
+          FROM_EMAIL: noreply@si6.io
         run: |
-          # Encode TAR file as base64
-          base64 mta.tar > encoded.txt
+          # Encode MTAR file as base64
+          base64 mta_project.mtar > encoded.txt
           ENCODED_CONTENT=$(cat encoded.txt)
-
+ 
           # Create JSON payload
           cat <<EOF > payload.json
           {
             "personalizations": [
               {
                 "to": [{ "email": "${TO_EMAIL}" }],
-                "subject": "MTA  Archive from GitHub Actions"
+                "subject": "Built MTA Archive from GitHub Actions"
               }
             ],
             "from": { "email": "${FROM_EMAIL}" },
             "content": [
               {
                 "type": "text/plain",
-                "value": "Hello,\n\nPlease find attached the generated MTA project TAR file.\n\nRegards,\nGitHub Actions"
+                "value": "Hello,\n\nPlease find attached the built MTA archive.\n\nRegards,\nGitHub Actions"
               }
             ],
             "attachments": [
               {
                 "content": "${ENCODED_CONTENT}",
-                "type": "application/x-tar",
-                "filename": "mta.tar"
+                "type": "application/x-tar", # MTAR files are essentially tar files
+                "filename": "mta_project.mtar"
               }
             ]
           }
           EOF
-
+ 
           # Send email using SendGrid API
           curl -X POST "https://api.sendgrid.com/v3/mail/send" \
             -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
