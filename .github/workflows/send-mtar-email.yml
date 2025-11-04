@@ -41,13 +41,13 @@ jobs:
       - name: Build MTA Archive
         run: mbt build -t gen --mtar mta.tar
 
-      # Step 7: Create TAR file from project source
-      - name: Create TAR Archive from Source Code
-        run: |
-          mkdir -p gen
-          tar -cvf gen/project_backup.tar ./
-          echo "Generated TAR file:"
-          ls -lh gen/
+      # # Step 7: Create TAR file from project source
+      # - name: Create TAR Archive from Source Code
+      #   run: |
+      #     mkdir -p gen
+      #     tar -cvf gen/project_backup.tar ./
+      #     echo "Generated TAR file:"
+      #     ls -lh gen/
 
       # Step 8: Get Microsoft Graph API Access Token
       - name: Get Access Token from Microsoft Graph
