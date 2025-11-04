@@ -1,4 +1,4 @@
-name: Upload CF-Generated MTA TAR to OneDrive
+name: Upload mta.yaml as TAR to OneDrive
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -31,14 +31,27 @@ jobs:
         run: |
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
-      # Step 5: Build MTA Archive (creates mta.tar)
+      # Step 5: Build MTA Archive (for verification only)
       - name: Build MTA Archive using MBT
         run: |
           mbt build -t gen --mtar mta.tar
-          echo "Generated MTA file:"
-          ls -lh gen/
+          echo "Build completed. Listing generated files:"
+          ls -lh gen/ || true
 
-      # Step 6: Get Access Token from Microsoft Graph
+      # Step 6: Create TAR containing only mta.yaml
+      - name: Create TAR of only mta.yaml
+        run: |
+          mkdir -p gen
+          if [ -f "mta.yaml" ]; then
+            tar -cvf gen/mta_yaml.tar mta.yaml
+            echo "TAR created successfully:"
+            ls -lh gen/
+          else
+            echo "mta.yaml not found in repository root!"
+            exit 1
+          fi
+
+      # Step 7: Get Access Token from Microsoft Graph
       - name: Get Access Token
         id: get_token
         run: |
@@ -51,26 +64,26 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 7: Upload the generated mta.tar to OneDrive
-      - name: Upload mta.tar to OneDrive
+      # Step 8: Upload TAR file (mta_yaml.tar) to OneDrive
+      - name: Upload mta_yaml.tar to OneDrive
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
         run: |
-          echo "Uploading mta.tar to OneDrive..."
-          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/content" \
+          echo "Uploading mta_yaml.tar to OneDrive..."
+          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta_yaml.tar:/content" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/x-tar" \
-            --data-binary @gen/mta.tar
+            --data-binary @gen/mta_yaml.tar
 
-      # Step 8: Generate Shareable Link for mta.tar
+      # Step 9: Generate Shareable OneDrive Link
       - name: Generate Shareable OneDrive Link
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
         run: |
           echo "Creating shareable link..."
-          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta.tar:/createLink" \
+          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/mta_yaml.tar:/createLink" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d '{"type": "view", "scope": "anonymous"}' \
