@@ -1,4 +1,4 @@
-name: Upload MTA TAR to SharePoint
+name: Upload CF-Generated MTA TAR to OneDrive
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  deploy:
+  upload-to-onedrive:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,23 +32,25 @@ jobs:
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
       # Step 5: Build MTA Archive (creates mta.tar)
-      - name: Build MTA Archive
+      - name: Build MTA Archive using MBT
         run: |
           mbt build -t gen --mtar mta.tar
           echo "Generated MTA file:"
           ls -lh gen/
 
-      # Step 6: Generate timestamped filename
-      - name: Generate Timestamped Filename
+      # Step 6: Generate dynamic file name and folder path
+      - name: Set dynamic TAR filename
         id: filename
         run: |
-          FILE="mta_$(date +'%Y-%m-%d_%H-%M-%S').tar"
-          echo "filename=$FILE" >> $GITHUB_OUTPUT
-          mv gen/mta.tar gen/$FILE
-          echo "Renamed file to: $FILE"
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          FOLDER="Deployments"  # Change this to any folder you want on OneDrive
+          FILENAME="mta_${TIMESTAMP}.tar"
+          echo "folder=$FOLDER" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "Generated TAR name: $FILENAME"
 
-      # Step 7: Get Microsoft Graph API Access Token
-      - name: Get Access Token from Microsoft Graph
+      # Step 7: Get Access Token from Microsoft Graph
+      - name: Get Access Token
         id: get_token
         run: |
           response=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
@@ -60,45 +62,31 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-       # Step 8: Upload MTA TAR to SharePoint
-      - name: Upload MTA TAR to SharePoint
+      # Step 8: Upload the generated mta.tar to OneDrive in specific folder
+      - name: Upload mta.tar to OneDrive folder
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
-          HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
-          SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
-          DOC_LIB: ${{ secrets.SHAREPOINT_DOC_LIB }}
-          FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
           FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
-          echo "Uploading ${FILENAME} to SharePoint..."
-          echo "HOSTNAME=${HOSTNAME}"
-          echo "SITE_PATH=${SITE_PATH}"
-          echo "DOC_LIB=${DOC_LIB}"
-          echo "FOLDER_PATH=${FOLDER_PATH}"
-
-          # Encode spaces for SharePoint URLs
-          ENCODED_DOC_LIB=$(echo "${DOC_LIB}" | sed 's/ /%20/g')
-          ENCODED_FOLDER_PATH=$(echo "${FOLDER_PATH}" | sed 's/ /%20/g')
-
-          UPLOAD_URL="https://${HOSTNAME}/${SITE_PATH}/_api/web/GetFolderByServerRelativeUrl('${ENCODED_DOC_LIB}/${ENCODED_FOLDER_PATH}')/Files/add(url='${FILENAME}',overwrite=true)"
-          
-          echo "Upload URL: $UPLOAD_URL"
-
-          curl -X POST "$UPLOAD_URL" \
+          echo "Uploading ${FILENAME} to OneDrive folder: ${FOLDER}"
+          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/content" \
             -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/json;odata=verbose" \
-            --data-binary @gen/${FILENAME}
+            -H "Content-Type: application/x-tar" \
+            --data-binary @gen/mta.tar
 
-
-
-      # Step 9 (Optional): Confirm upload
-      - name: Verify Upload (Optional)
+      # Step 9: Generate shareable link for uploaded file
+      - name: Generate Shareable OneDrive Link
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
-          HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
-          SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
+          FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
-          echo "Verifying upload..."
-          curl -s -X GET "https://${HOSTNAME}/${SITE_PATH}/_api/web/GetFolderByServerRelativeUrl('Shared%20Documents/Automation/Reports')/Files" \
+          echo "Creating shareable link for ${FILENAME}..."
+          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/createLink" \
             -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/json;odata=verbose" | jq '.d.results[]?.Name'
+            -H "Content-Type: application/json" \
+            -d '{"type": "view", "scope": "anonymous"}' \
+            | jq -r '.link.webUrl'
