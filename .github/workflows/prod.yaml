@@ -1,0 +1,87 @@
+name: Upload CF-Generated MTA TAR to OneDrive (PROD)
+
+on:
+  push:
+    branches:
+      - prod
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  upload-to-onedrive-prod:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Install Cloud Foundry CLI
+      - name: Install Cloud Foundry CLI
+        run: |
+          curl -sL "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
+          sudo mv cf8 /usr/local/bin/
+          cf8 --version
+
+      # Step 3: Install MBT
+      - name: Install MBT
+        run: npm install -g mbt
+
+      # Step 4: Install MTA Plugin
+      - name: Install MTA Plugin
+        run: |
+          cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
+
+      # Step 5: Build MTA Archive
+      - name: Build MTA Archive
+        run: |
+          mbt build -t gen --mtar mta.tar
+          ls -lh gen/
+
+      # Step 6: Set filename and folder for PROD
+      - name: Set TAR filename
+        id: filename
+        run: |
+          DATE=$(date +"%Y-%m-%d")
+          FOLDER="Deployments/CPAWSB/PROD"
+          FILENAME="mta_PROD_${DATE}.tar"
+          echo "folder=$FOLDER" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+      # Step 7: Get Access Token
+      - name: Get Access Token
+        id: get_token
+        run: |
+          response=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -d "scope=https://graph.microsoft.com/.default" \
+            -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+            -d "grant_type=client_credentials" \
+            "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token")
+          echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
+
+      # Step 8: Upload TAR to OneDrive
+      - name: Upload TAR to OneDrive
+        env:
+          TOKEN: ${{ steps.get_token.outputs.token }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
+          FILENAME: ${{ steps.filename.outputs.filename }}
+        run: |
+          curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/content" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/x-tar" \
+            --data-binary @gen/mta.tar
+
+      # Step 9: Generate Shareable Link
+      - name: Generate Shareable OneDrive Link
+        env:
+          TOKEN: ${{ steps.get_token.outputs.token }}
+          ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
+          FILENAME: ${{ steps.filename.outputs.filename }}
+        run: |
+          curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/createLink" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"type": "view", "scope": "anonymous"}' \
+            | jq -r '.link.webUrl'
