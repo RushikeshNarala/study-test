@@ -60,7 +60,7 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-            # Step 8: Upload MTA TAR to SharePoint
+       # Step 8: Upload MTA TAR to SharePoint
       - name: Upload MTA TAR to SharePoint
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
@@ -88,6 +88,7 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: application/json;odata=verbose" \
             --data-binary @gen/${FILENAME}
+
 
 
       # Step 9 (Optional): Confirm upload
