@@ -60,7 +60,7 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 8: Upload TAR file to SharePoint Document Library (Deployment folder)
+            # Step 8: Upload TAR file to SharePoint
       - name: Upload TAR file to SharePoint
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
@@ -71,10 +71,20 @@ jobs:
           FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
           echo "Uploading ${FILENAME} to SharePoint folder..."
-          curl -X PUT "https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_HOSTNAME}:${SHAREPOINT_SITE_PATH}:/drive/root:/${SHAREPOINT_DOC_LIB}/${SHAREPOINT_FOLDER_PATH}/${FILENAME}:/content" \
+
+          # Properly encode spaces (Shared Documents → Shared%20Documents)
+          DOC_LIB_ENCODED=$(echo "${SHAREPOINT_DOC_LIB}" | sed 's/ /%20/g')
+          FOLDER_PATH_ENCODED=$(echo "${SHAREPOINT_FOLDER_PATH}" | sed 's/ /%20/g')
+
+          UPLOAD_URL="https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_HOSTNAME}:/sites/${SHAREPOINT_SITE_PATH}:/drive/root:/${DOC_LIB_ENCODED}/${FOLDER_PATH_ENCODED}/${FILENAME}:/content"
+
+          echo "Uploading to: $UPLOAD_URL"
+
+          curl -X PUT "$UPLOAD_URL" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/x-tar" \
             --data-binary @gen/mta.tar
+
 
       # Step 9: Generate Shareable Link for the file
       - name: Generate Shareable Link
