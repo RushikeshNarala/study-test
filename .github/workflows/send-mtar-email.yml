@@ -60,7 +60,7 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 8: Upload MTA TAR file to SharePoint
+            # Step 8: Upload MTA TAR to SharePoint
       - name: Upload MTA TAR to SharePoint
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
@@ -71,19 +71,24 @@ jobs:
           FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
           echo "Uploading ${FILENAME} to SharePoint..."
+          echo "HOSTNAME=${HOSTNAME}"
+          echo "SITE_PATH=${SITE_PATH}"
+          echo "DOC_LIB=${DOC_LIB}"
+          echo "FOLDER_PATH=${FOLDER_PATH}"
 
-          # Encode spaces and special chars in path
+          # Encode spaces for SharePoint URLs
           ENCODED_DOC_LIB=$(echo "${DOC_LIB}" | sed 's/ /%20/g')
           ENCODED_FOLDER_PATH=$(echo "${FOLDER_PATH}" | sed 's/ /%20/g')
 
           UPLOAD_URL="https://${HOSTNAME}/${SITE_PATH}/_api/web/GetFolderByServerRelativeUrl('${ENCODED_DOC_LIB}/${ENCODED_FOLDER_PATH}')/Files/add(url='${FILENAME}',overwrite=true)"
-
+          
           echo "Upload URL: $UPLOAD_URL"
 
           curl -X POST "$UPLOAD_URL" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: application/json;odata=verbose" \
             --data-binary @gen/${FILENAME}
+
 
       # Step 9 (Optional): Confirm upload
       - name: Verify Upload (Optional)
