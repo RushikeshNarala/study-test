@@ -1,4 +1,4 @@
-name: Upload CF-Generated TAR File to SharePoint
+name: Upload CF-Generated MTA TAR to SharePoint
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -32,13 +32,13 @@ jobs:
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
       # Step 5: Build MTA Archive (creates mta.tar)
-      - name: Build MTA Archive using CF
+      - name: Build MTA Archive using MBT
         run: |
           mbt build -t gen --mtar mta.tar
           echo "Generated MTA file:"
           ls -lh gen/
 
-      # Step 6: Set dynamic TAR filename
+      # Step 6: Generate dynamic file name
       - name: Set dynamic TAR filename
         id: filename
         run: |
@@ -47,8 +47,8 @@ jobs:
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "Generated TAR name: $FILENAME"
 
-      # Step 7: Get Microsoft Graph API Access Token
-      - name: Get Access Token
+      # Step 7: Get Microsoft Graph API access token
+      - name: Get Access Token from Microsoft Graph
         id: get_token
         run: |
           response=$(curl -s -X POST -H "Content-Type: application/x-www-form-urlencoded" \
@@ -60,45 +60,34 @@ jobs:
 
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-            # Step 8: Upload TAR file to SharePoint
-      - name: Upload TAR file to SharePoint
+      # Step 8: Upload the mta.tar to SharePoint folder
+      - name: Upload MTA TAR to SharePoint
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
-          SHAREPOINT_HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}       # e.g. si6io.sharepoint.com
-          SHAREPOINT_SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}     # e.g. sites/DocumentsHub
-          SHAREPOINT_DOC_LIB: ${{ secrets.SHAREPOINT_DOC_LIB }}         # e.g. Shared Documents
-          SHAREPOINT_FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }} # e.g. Deployment
+          HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
+          SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+          DOC_LIB: ${{ secrets.SHAREPOINT_DOC_LIB }}
+          FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }}
           FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
           echo "Uploading ${FILENAME} to SharePoint folder..."
+          UPLOAD_URL="https://${HOSTNAME}/sites/${SITE_PATH}/_api/web/GetFolderByServerRelativeUrl('${DOC_LIB}/${FOLDER_PATH}')/Files/add(url='${FILENAME}',overwrite=true)"
+          echo "Upload URL: $UPLOAD_URL"
 
-          # Properly encode spaces (Shared Documents → Shared%20Documents)
-          DOC_LIB_ENCODED=$(echo "${SHAREPOINT_DOC_LIB}" | sed 's/ /%20/g')
-          FOLDER_PATH_ENCODED=$(echo "${SHAREPOINT_FOLDER_PATH}" | sed 's/ /%20/g')
-
-          UPLOAD_URL="https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_HOSTNAME}:/sites/${SHAREPOINT_SITE_PATH}:/drive/root:/${DOC_LIB_ENCODED}/${FOLDER_PATH_ENCODED}/${FILENAME}:/content"
-
-          echo "Uploading to: $UPLOAD_URL"
-
-          curl -X PUT "$UPLOAD_URL" \
+          curl -X POST "$UPLOAD_URL" \
             -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/x-tar" \
+            -H "Accept: application/json;odata=verbose" \
             --data-binary @gen/mta.tar
 
-
-      # Step 9: Generate Shareable Link for the file
-      - name: Generate Shareable Link
+      # Step 9: Confirm upload
+      - name: Confirm Upload
         env:
-          TOKEN: ${{ steps.get_token.outputs.token }}
-          SHAREPOINT_HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
-          SHAREPOINT_SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
-          SHAREPOINT_DOC_LIB: ${{ secrets.SHAREPOINT_DOC_LIB }}
-          SHAREPOINT_FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }}
+          HOSTNAME: ${{ secrets.SHAREPOINT_HOSTNAME }}
+          SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+          DOC_LIB: ${{ secrets.SHAREPOINT_DOC_LIB }}
+          FOLDER_PATH: ${{ secrets.SHAREPOINT_FOLDER_PATH }}
           FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
-          echo "Creating shareable link for ${FILENAME}..."
-          curl -X POST "https://graph.microsoft.com/v1.0/sites/${SHAREPOINT_HOSTNAME}:${SHAREPOINT_SITE_PATH}:/drive/root:/${SHAREPOINT_DOC_LIB}/${SHAREPOINT_FOLDER_PATH}/${FILENAME}:/createLink" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"type": "view", "scope": "organization"}' \
-            | jq -r '.link.webUrl'
+          echo "✅ File uploaded successfully!"
+          echo "📁 SharePoint location:"
+          echo "https://${HOSTNAME}/sites/${SITE_PATH}/${DOC_LIB}/${FOLDER_PATH}/${FILENAME}"
