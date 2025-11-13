@@ -1,13 +1,13 @@
-name: Upload CF-Generated MTA TAR to OneDrive
+name: Upload CF-Generated MTA TAR to OneDrive (UAT)
 
 on:
   push:
     branches:
-     
-  workflow_dispatch:  # manual trigger
+      - uat
+  workflow_dispatch:  # Manual trigger
 
 jobs:
-  upload-to-onedrive:
+  upload-to-onedrive-uat:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Step 2: Install Cloud Foundry CLI (v8)
+      # Step 2: Install Cloud Foundry CLI
       - name: Install Cloud Foundry CLI
         run: |
           curl -sL "https://packages.cloudfoundry.org/stable?release=linux64-binary&version=8.8.3&source=github-rel" | tar -zx
@@ -31,31 +31,23 @@ jobs:
         run: |
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
-      # Step 5: Build MTA Archive (creates mta.tar)
-      - name: Build MTA Archive using MBT
+      # Step 5: Build MTA Archive
+      - name: Build MTA Archive
         run: |
           mbt build -t gen --mtar mta.tar
-          echo "Generated MTA file:"
           ls -lh gen/
 
-      # Step 6: Determine OneDrive Folder based on branch
-      - name: Set OneDrive Folder Based on Branch
-        id: folder
+      # Step 6: Set filename and folder for UAT
+      - name: Set TAR filename
+        id: filename
         run: |
-          if [ "${GITHUB_REF##*/}" = "uat" ]; then
-            FOLDER="Deployments/CPAWSB/UAT"
-          elif [ "${GITHUB_REF##*/}" = "prod" ]; then
-            FOLDER="Deployments/CPAWSB/PROD"
-          else
-            FOLDER="Deployments/CPAWSB/Other"
-          fi
-          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-          FILENAME="mta_${TIMESTAMP}.tar"
+          DATE=$(date +"%Y-%m-%d")
+          FOLDER="Deployments/CPAWSB/UAT"
+          FILENAME="mta_UAT_${DATE}.tar"
           echo "folder=$FOLDER" >> $GITHUB_OUTPUT
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-          echo "Branch: ${GITHUB_REF##*/}, Folder: $FOLDER, File: $FILENAME"
 
-      # Step 7: Get Microsoft Graph API Access Token
+      # Step 7: Get Access Token
       - name: Get Access Token
         id: get_token
         run: |
@@ -67,15 +59,14 @@ jobs:
             "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token")
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 8: Upload mta.tar to the branch-specific folder
-      - name: Upload mta.tar to OneDrive
+      # Step 8: Upload TAR to OneDrive
+      - name: Upload TAR to OneDrive
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
-          FOLDER: ${{ steps.folder.outputs.folder }}
-          FILENAME: ${{ steps.folder.outputs.filename }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
+          FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
-          echo "Uploading ${FILENAME} to OneDrive folder: ${FOLDER}"
           curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/content" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/x-tar" \
@@ -86,10 +77,9 @@ jobs:
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
-          FOLDER: ${{ steps.folder.outputs.folder }}
-          FILENAME: ${{ steps.folder.outputs.filename }}
+          FOLDER: ${{ steps.filename.outputs.folder }}
+          FILENAME: ${{ steps.filename.outputs.filename }}
         run: |
-          echo "Creating shareable link for ${FILENAME}..."
           curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/createLink" \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
