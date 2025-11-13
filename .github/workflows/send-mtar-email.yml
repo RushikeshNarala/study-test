@@ -1,10 +1,11 @@
 name: Upload CF-Generated MTA TAR to OneDrive
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - main
+      - uat
+      - prod
+  workflow_dispatch:  # manual trigger
 
 jobs:
   upload-to-onedrive:
@@ -31,23 +32,29 @@ jobs:
         run: |
           cf8 install-plugin -f https://github.com/cloudfoundry-incubator/multiapps-cli-plugin/releases/latest/download/multiapps-plugin.linux64
 
-      # Step 5: Build MTA Archive
+      # Step 5: Build MTA Archive (creates mta.tar)
       - name: Build MTA Archive using MBT
         run: |
           mbt build -t gen --mtar mta.tar
           echo "Generated MTA file:"
           ls -lh gen/
 
-      # Step 6: Generate dynamic file name
-      - name: Set dynamic TAR filename
-        id: filename
+      # Step 6: Determine OneDrive Folder based on branch
+      - name: Set OneDrive Folder Based on Branch
+        id: folder
         run: |
+          if [ "${GITHUB_REF##*/}" = "uat" ]; then
+            FOLDER="Deployments/CPAWSB/UAT"
+          elif [ "${GITHUB_REF##*/}" = "prod" ]; then
+            FOLDER="Deployments/CPAWSB/PROD"
+          else
+            FOLDER="Deployments/CPAWSB/Other"
+          fi
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-          FOLDER="Deployments/CPAWSB/UAT"  # Nested folder path
           FILENAME="mta_${TIMESTAMP}.tar"
           echo "folder=$FOLDER" >> $GITHUB_OUTPUT
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-          echo "Generated TAR name: $FILENAME"
+          echo "Branch: ${GITHUB_REF##*/}, Folder: $FOLDER, File: $FILENAME"
 
       # Step 7: Get Microsoft Graph API Access Token
       - name: Get Access Token
@@ -59,16 +66,15 @@ jobs:
             -d "client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
             -d "grant_type=client_credentials" \
             "https://login.microsoftonline.com/${{ secrets.AZURE_TENANT_ID }}/oauth2/v2.0/token")
-
           echo "token=$(echo $response | jq -r '.access_token')" >> $GITHUB_OUTPUT
 
-      # Step 8: Upload mta.tar to nested OneDrive folder
+      # Step 8: Upload mta.tar to the branch-specific folder
       - name: Upload mta.tar to OneDrive
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
-          FOLDER: ${{ steps.filename.outputs.folder }}
-          FILENAME: ${{ steps.filename.outputs.filename }}
+          FOLDER: ${{ steps.folder.outputs.folder }}
+          FILENAME: ${{ steps.folder.outputs.filename }}
         run: |
           echo "Uploading ${FILENAME} to OneDrive folder: ${FOLDER}"
           curl -X PUT "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/content" \
@@ -81,8 +87,8 @@ jobs:
         env:
           TOKEN: ${{ steps.get_token.outputs.token }}
           ONEDRIVE_USER: ${{ secrets.ONEDRIVE_USER }}
-          FOLDER: ${{ steps.filename.outputs.folder }}
-          FILENAME: ${{ steps.filename.outputs.filename }}
+          FOLDER: ${{ steps.folder.outputs.folder }}
+          FILENAME: ${{ steps.folder.outputs.filename }}
         run: |
           echo "Creating shareable link for ${FILENAME}..."
           curl -X POST "https://graph.microsoft.com/v1.0/users/${ONEDRIVE_USER}/drive/root:/${FOLDER}/${FILENAME}:/createLink" \
